@@ -5,10 +5,12 @@ package roomrouter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +32,7 @@ func SetGameRoutes() func(chi.Router) {
 			r.Use(gameReqs)
 			r.HandleFunc("/connect", gameConnect)
 			r.HandleFunc("/disconnect", gameDisconnect)
+			r.HandleFunc("/history", gameHistory)
 			r.Get("/listen", gameListen)
 			r.Post("/send", gameSend)
 		})
@@ -41,6 +44,12 @@ func SetGameRoutes() func(chi.Router) {
 type Game struct {
 	players   map[string]struct{}
 	listening map[string]chan []byte
+	history   []historicalEvent
+}
+
+type historicalEvent struct {
+	user    string
+	payload string
 }
 
 type key int
@@ -104,6 +113,45 @@ func gameLists(w http.ResponseWriter, r *http.Request) {
 
 		}
 	}
+}
+
+func gameHistory(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	gID := ctx.Value(gameIDKey).(string)
+	name := ctx.Value(pNameKey).(string)
+
+	g, ok := games[gID]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	h := g.history
+	title := "Game History for " + gID + " as requested by " + name
+
+	format := req.URL.Query().Get("format")
+	fmt.Println(title + " in format " + format)
+	if strings.ToLower(format) == "json" {
+		body, err := json.Marshal(h)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "Something went real wrong in the history.")
+			return
+		}
+		fmt.Fprintf(w, string(body))
+		return
+	}
+
+	w.Write([]byte(title + ":\n"))
+	w.Write([]byte("-----------------------\n"))
+	for _, e := range h {
+		pre := "-->"
+		if e.user == name {
+			pre = "<--"
+		}
+		fmt.Fprintf(w, "%s %s %s", e.user, pre, e.payload)
+	}
+	return
 }
 
 func gameBoilerPlate(w http.ResponseWriter, r *http.Request) {
@@ -204,6 +252,8 @@ func gameSend(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	g.history = append(g.history, historicalEvent{thisPlayer, string(body)})
+	games[gID] = g
 	for name, ch := range g.listening {
 		if name == thisPlayer {
 			continue
