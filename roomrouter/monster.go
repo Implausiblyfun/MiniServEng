@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -66,9 +67,14 @@ func gameReqs(next http.Handler) http.Handler {
 			return
 		}
 
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			ip = "000.000.0.0"
+		}
+
 		ctx := context.WithValue(
 			context.WithValue(r.Context(), gameIDKey, gID),
-			pNameKey, r.RemoteAddr+pName)
+			pNameKey, ip+pName)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -213,7 +219,6 @@ func gameDisconnect(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Disconnected from the game.\n")
 
