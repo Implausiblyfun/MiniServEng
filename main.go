@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi"
@@ -18,7 +19,11 @@ func main() {
 
 	r.Route("/game", roomrouter.SetGameRoutes())
 
-	fmt.Println("Running on port  289")
-	http.ListenAndServe(":289", r)
+	port := "970"
+	fmt.Printf("Running on port %s\n", port)
+
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Fatal(err)
+	}
 
 }
