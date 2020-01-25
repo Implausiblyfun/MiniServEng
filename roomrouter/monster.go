@@ -5,7 +5,6 @@ package roomrouter
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -27,7 +26,7 @@ func SetGameRoutes() func(chi.Router) {
 		r.Get("/list", gameLists)
 		r.Group(func(r chi.Router) {
 			r.Use(gameReqs)
-			r.Post("/connect", gameConnect)
+			r.HandleFunc("/connect", gameConnect)
 			r.HandleFunc("/disconnect", gameDisconnect)
 			r.Get("/listen", gameListen)
 			r.Post("/send", gameSend)
@@ -40,18 +39,6 @@ func SetGameRoutes() func(chi.Router) {
 type Game struct {
 	players   map[string]struct{}
 	listening map[string]chan []byte
-}
-
-func parseGameID(req *http.Request) (string, error) {
-	val := req.URL.Query().Get("gameID")
-	if val == "" {
-		return "", errors.New("no game id field found")
-	}
-	return val, nil
-}
-
-func getPlayerName(req *http.Request) string {
-	return req.RemoteAddr + req.URL.Query().Get("name")
 }
 
 type key int
@@ -214,13 +201,26 @@ func gameDisconnect(w http.ResponseWriter, req *http.Request) {
 	defer gameLock.Unlock()
 	g, ok := games[gID]
 	if !ok {
+		fmt.Printf("Failed to find the game=%s, pname=%s\n", gID, name)
 		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Failed to find the game specified for Disconnection.")
 		return
 	}
+	if _, ok := g.players[name]; !ok {
+		fmt.Printf("Failed to find the player gid=%s, pname=%s\n", gID, name)
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Failed to find the player specified for Disconnection.")
+		return
+	}
+
+	
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Disconnected from the game.\n")
 
 	delete(g.players, name)
 	if len(g.players) == 0 {
 		delete(games, gID)
+		fmt.Printf("Cleaning up the gamne %s\n", gID)
+		fmt.Fprintf(w, "Cleaned up the game:%s!\n", gID)
 	}
-	w.WriteHeader(http.StatusOK)
 }
