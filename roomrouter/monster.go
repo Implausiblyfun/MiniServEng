@@ -25,6 +25,7 @@ func SetGameRoutes() func(chi.Router) {
 	return func(r chi.Router) {
 		r.HandleFunc("/", gameBoilerPlate)
 		r.Get("/list", gameLists)
+		r.HandleFunc("/clear", gameClear)
 		r.Group(func(r chi.Router) {
 			r.Use(gameReqs)
 			r.HandleFunc("/connect", gameConnect)
@@ -108,6 +109,23 @@ func gameLists(w http.ResponseWriter, r *http.Request) {
 func gameBoilerPlate(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Currently used for mini20\n"))
 	w.Write([]byte("Basically a chat room."))
+}
+func gameClear(w http.ResponseWriter, r *http.Request) {
+	gameLock.Lock()
+	defer gameLock.Unlock()
+	gID := r.URL.Query().Get("gameID")
+	_, ok := games[gID]
+	if !ok {
+		fmt.Printf("Failed to find the game='%s'\n", gID)
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Failed to find the game specified for Disconnection.")
+		return
+	}
+
+	delete(games, gID)
+	fmt.Printf("Cleaning up the game %s\n", gID)
+	fmt.Fprintf(w, "Cleaned up the game:%s!\n", gID)
+	return
 }
 
 func gameConnect(w http.ResponseWriter, req *http.Request) {
@@ -225,7 +243,7 @@ func gameDisconnect(w http.ResponseWriter, req *http.Request) {
 	delete(g.players, name)
 	if len(g.players) == 0 {
 		delete(games, gID)
-		fmt.Printf("Cleaning up the gamne %s\n", gID)
+		fmt.Printf("Cleaning up the game %s\n", gID)
 		fmt.Fprintf(w, "Cleaned up the game:%s!\n", gID)
 	}
 }
