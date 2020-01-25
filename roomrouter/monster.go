@@ -4,6 +4,7 @@
 package roomrouter
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -22,10 +23,16 @@ var (
 // SetGameRoutes on the router
 func SetGameRoutes() func(chi.Router) {
 	return func(r chi.Router) {
-		r.Get("/connect", gameConnect)
-		r.Get("/disconnect", gameDisconnect)
-		r.Get("/listen", gameListen)
-		r.Get("/send", gameSend)
+		r.Get("/", gameBoilerPlate)
+		r.Get("/list", gameLists)
+		r.Group(func(r chi.Router) {
+			r.Use(gameReqs)
+			r.Get("/connect", gameConnect)
+			r.Get("/disconnect", gameDisconnect)
+			r.Get("/listen", gameListen)
+			r.Get("/send", gameSend)
+		})
+
 	}
 }
 
@@ -47,20 +54,82 @@ func getPlayerName(req *http.Request) string {
 	return req.RemoteAddr + req.URL.Query().Get("name")
 }
 
-func gameConnect(w http.ResponseWriter, req *http.Request) {
-	gID, err := parseGameID(req)
-	if err != nil {
-		fmt.Println("couldn't parse game id", err)
-		w.WriteHeader(http.StatusBadRequest)
+type key int
+
+const (
+	gameIDKey key = iota
+	pNameKey  key = iota
+)
+
+func gameReqs(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		gID := r.URL.Query().Get("gameID")
+		if gID == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Println("couldn't find a gameID")
+			fmt.Fprintf(w, "Bad Request Found, consult the parameter lists")
+			return
+		}
+		pName := r.URL.Query().Get("name")
+		if pName == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Println("couldn't find the users name")
+			fmt.Fprintf(w, "Bad Request Found, consult the parameter lists")
+			return
+		}
+
+		ctx := context.WithValue(
+			context.WithValue(r.Context(), gameIDKey, gID),
+			pNameKey, r.RemoteAddr+pName)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+
+}
+
+// Begin Route creations
+
+func gameLists(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("Room list!\n"))
+	operation := r.URL.Query().Get("players")
+	if len(games) == 0 {
+		fmt.Fprintf(w, "No rooms setup.")
 		return
 	}
-	name := getPlayerName(req)
+	for game := range games {
+		fmt.Fprintf(w, "- %s\n", game)
+		if operation != "" {
+			if len(games[game].players) == 0 {
+				fmt.Fprintf(w, "No playtrs connected.")
+
+			}
+			for p := range games[game].players {
+				fmt.Fprintf(w, "   %s\n", p)
+			}
+
+		}
+	}
+}
+
+func gameBoilerPlate(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("Currently used for mini20\n"))
+	w.Write([]byte("Basically a chat room."))
+}
+
+func gameConnect(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	gID := ctx.Value(gameIDKey).(string)
+	name := ctx.Value(pNameKey).(string)
 
 	gameLock.Lock()
 	defer gameLock.Unlock()
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Connecting to game")
 	g, ok := games[gID]
 	if ok {
 		// connect to existing game
+		fmt.Fprintf(w, "\nExisting game connected to.")
 		g.players[name] = struct{}{}
 	} else {
 		// make new game
@@ -69,17 +138,16 @@ func gameConnect(w http.ResponseWriter, req *http.Request) {
 			listening: map[string]chan []byte{},
 		}
 		games[gID] = g
+		fmt.Fprintf(w, "\nCreated a new game.")
 	}
-	w.WriteHeader(http.StatusOK)
+
 }
 
 func gameListen(w http.ResponseWriter, req *http.Request) {
-	gID, err := parseGameID(req)
-	if err != nil {
-		fmt.Println("couldn't parse game id", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+	ctx := req.Context()
+	gID := ctx.Value(gameIDKey).(string)
+	name := ctx.Value(pNameKey).(string)
+
 	gameLock.Lock()
 	g, ok := games[gID]
 	if !ok {
@@ -87,7 +155,7 @@ func gameListen(w http.ResponseWriter, req *http.Request) {
 		gameLock.Unlock()
 		return
 	}
-	name := getPlayerName(req)
+
 	ch := make(chan []byte)
 	g.listening[name] = ch
 	gameLock.Unlock()
@@ -108,12 +176,10 @@ func gameListen(w http.ResponseWriter, req *http.Request) {
 }
 
 func gameSend(w http.ResponseWriter, req *http.Request) {
-	gID, err := parseGameID(req)
-	if err != nil {
-		fmt.Println("couldn't parse game id", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+	ctx := req.Context()
+	gID := ctx.Value(gameIDKey).(string)
+	thisPlayer := ctx.Value(pNameKey).(string)
+
 	gameLock.Lock()
 	defer gameLock.Unlock()
 	g, ok := games[gID]
@@ -127,7 +193,6 @@ func gameSend(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	thisPlayer := getPlayerName(req)
 	for name, ch := range g.listening {
 		if name == thisPlayer {
 			continue
@@ -141,12 +206,10 @@ func gameSend(w http.ResponseWriter, req *http.Request) {
 }
 
 func gameDisconnect(w http.ResponseWriter, req *http.Request) {
-	gID, err := parseGameID(req)
-	if err != nil {
-		fmt.Println("couldn't parse game id", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+	ctx := req.Context()
+	gID := ctx.Value(gameIDKey).(string)
+	name := ctx.Value(pNameKey).(string)
+
 	gameLock.Lock()
 	defer gameLock.Unlock()
 	g, ok := games[gID]
@@ -154,7 +217,6 @@ func gameDisconnect(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	name := getPlayerName(req)
 
 	delete(g.players, name)
 	if len(g.players) == 0 {
