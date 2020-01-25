@@ -23,14 +23,14 @@ var (
 // SetGameRoutes on the router
 func SetGameRoutes() func(chi.Router) {
 	return func(r chi.Router) {
-		r.Get("/", gameBoilerPlate)
+		r.HandleFunc("/", gameBoilerPlate)
 		r.Get("/list", gameLists)
 		r.Group(func(r chi.Router) {
 			r.Use(gameReqs)
-			r.Get("/connect", gameConnect)
-			r.Get("/disconnect", gameDisconnect)
+			r.Post("/connect", gameConnect)
+			r.HandleFunc("/disconnect", gameDisconnect)
 			r.Get("/listen", gameListen)
-			r.Get("/send", gameSend)
+			r.Post("/send", gameSend)
 		})
 
 	}

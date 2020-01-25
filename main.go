@@ -6,13 +6,14 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"github.com/implausiblyfun/miniserveng/roomrouter"
 )
 
 func main() {
 	r := chi.NewRouter()
-	// r.Use(middleware.Throttle(3))
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+	r.Use(middleware.Throttle(3))
+	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Plz dont overload this.\nJust trying to make a nice little easy webbysite."))
 	})
 
