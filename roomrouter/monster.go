@@ -115,6 +115,7 @@ func gameLists(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// TODO: make json to work
 func gameHistory(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	gID := ctx.Value(gameIDKey).(string)
@@ -149,7 +150,7 @@ func gameHistory(w http.ResponseWriter, req *http.Request) {
 		if e.user == name {
 			pre = "<--"
 		}
-		fmt.Fprintf(w, "%s %s %s", e.user, pre, e.payload)
+		fmt.Fprintf(w, "%s %s %s\n", e.user, pre, e.payload)
 	}
 	return
 }
@@ -166,7 +167,7 @@ func gameClear(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		fmt.Printf("Failed to find the game='%s'\n", gID)
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Failed to find the game specified for Disconnection.")
+		fmt.Fprintf(w, "Failed to find the game:'%s' specified for Disconnection.", gID)
 		return
 	}
 
@@ -226,9 +227,14 @@ func gameListen(w http.ResponseWriter, req *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	case <-time.After(100 * time.Second):
-		fmt.Println("timed out")
+		fmt.Println("in the future we would: checking livelyhood with a heartbeat request for ", gID, name)
+		// TODO: consider setting something here to actually make this
 		w.WriteHeader(http.StatusRequestTimeout)
 	}
+
+	// This should indicate the user stopped listening.
+	// They may reconnect eventually but maybe not so we will have to make this clearer in the future.
+	// Later sweep should deal with sending to others in the game to decide if they leave or what.
 	gameLock.Lock()
 	delete(g.listening, name)
 	gameLock.Unlock()
