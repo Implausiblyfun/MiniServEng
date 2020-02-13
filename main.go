@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -12,7 +13,8 @@ import (
 
 func main() {
 	r := chi.NewRouter()
-	r.Use(middleware.Throttle(3))
+	r.Use(middleware.ThrottleBacklog(10, 50, time.Second*5))
+
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Plz dont overload this.\nJust trying to make a nice little easy webbysite."))
 	})
