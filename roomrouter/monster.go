@@ -93,9 +93,9 @@ func gameReqs(next http.Handler) http.Handler {
 
 // Begin Route creations
 
-func gameLists(w http.ResponseWriter, r *http.Request) {
+func gameLists(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte("Room list!\n"))
-	operation := r.URL.Query().Get("players")
+	operation := req.URL.Query().Get("players")
 	if len(games) == 0 {
 		fmt.Fprintf(w, "No rooms setup.")
 		return
@@ -155,14 +155,14 @@ func gameHistory(w http.ResponseWriter, req *http.Request) {
 	return
 }
 
-func gameBoilerPlate(w http.ResponseWriter, r *http.Request) {
+func gameBoilerPlate(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte("Currently used for mini20\n"))
 	w.Write([]byte("Basically a chat room."))
 }
-func gameClear(w http.ResponseWriter, r *http.Request) {
+func gameClear(w http.ResponseWriter, req *http.Request) {
 	gameLock.Lock()
 	defer gameLock.Unlock()
-	gID := r.URL.Query().Get("gameID")
+	gID := req.URL.Query().Get("gameID")
 	_, ok := games[gID]
 	if !ok {
 		fmt.Printf("Failed to find the game='%s'\n", gID)
@@ -208,6 +208,8 @@ func gameListen(w http.ResponseWriter, req *http.Request) {
 	gID := ctx.Value(gameIDKey).(string)
 	name := ctx.Value(pNameKey).(string)
 
+	// playStatus := req.URL.Query().Get("pStatus")
+
 	gameLock.Lock()
 	g, ok := games[gID]
 	if !ok {
@@ -226,6 +228,7 @@ func gameListen(w http.ResponseWriter, req *http.Request) {
 			fmt.Println("failed to write data")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+		//TODO: case for killing on shared game channel
 	case <-time.After(100 * time.Second):
 		fmt.Println("in the future we would: checking livelyhood with a heartbeat request for ", gID, name)
 		// TODO: consider setting something here to actually make this
