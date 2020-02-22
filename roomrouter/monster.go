@@ -42,14 +42,27 @@ func SetGameRoutes() func(chi.Router) {
 
 // Game is basically a chat room functionality.
 type Game struct {
-	players   map[string]struct{}
+	players   map[string]*player
 	listening map[string]chan []byte
 	history   []historicalEvent
+	gameEnd   chan bool
 }
 
 type historicalEvent struct {
 	user    string
 	payload string
+}
+
+// player is a simple container for information.
+// Will overhaul things like playorder later.
+type player struct {
+	name      string
+	lastSeen  time.Time
+	playOrder int
+}
+
+func (p *player) seen() {
+	p.lastSeen = time.Now()
 }
 
 type key int
@@ -104,7 +117,7 @@ func gameLists(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, "- %s\n", game)
 		if operation != "" {
 			if len(games[game].players) == 0 {
-				fmt.Fprintf(w, "No playtrs connected.")
+				fmt.Fprintf(w, "   No players connected.")
 
 			}
 			for p := range games[game].players {
@@ -163,19 +176,19 @@ func gameClear(w http.ResponseWriter, req *http.Request) {
 	gameLock.Lock()
 	defer gameLock.Unlock()
 	gID := req.URL.Query().Get("gameID")
-	_, ok := games[gID]
+	g, ok := games[gID]
 	if !ok {
 		fmt.Printf("Failed to find the game='%s'\n", gID)
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "Failed to find the game:'%s' specified for Disconnection.", gID)
 		return
 	}
-
-	delete(games, gID)
-	fmt.Printf("Cleaning up the game %s\n", gID)
-	fmt.Fprintf(w, "Cleaned up the game:%s!\n", gID)
+	g.gameEnd <- true
+	fmt.Fprintf(w, "Cleaning up the game:%s!\n", gID)
 	return
 }
+
+const checkSeconds = 40
 
 func gameConnect(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
@@ -185,20 +198,71 @@ func gameConnect(w http.ResponseWriter, req *http.Request) {
 	gameLock.Lock()
 	defer gameLock.Unlock()
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Connecting to game")
+	fmt.Fprintf(w, "Connecting to game %s\n", gID)
 	g, ok := games[gID]
 	if ok {
 		// connect to existing game
-		fmt.Fprintf(w, "\nExisting game connected to.")
-		g.players[name] = struct{}{}
+		fmt.Fprintf(w, "Existing game %s connected to.\n", gID)
+		g.players[name] = &player{name, time.Now(), -1}
 	} else {
 		// make new game
 		g := Game{
-			players:   map[string]struct{}{name: struct{}{}},
+			players:   map[string]*player{name: &player{name, time.Now(), -1}},
 			listening: map[string]chan []byte{},
+			gameEnd:   make(chan bool, 2),
 		}
 		games[gID] = g
-		fmt.Fprintf(w, "\nCreated a new game.")
+
+		// Start the monitoring functionality to check with heartybeatz.
+		go func() {
+			for {
+				fmt.Printf("check game %s\n", gID)
+				select {
+				case <-g.gameEnd:
+					fmt.Println("Game End detected. Cleaning up as much as we can.")
+					gameLock.Lock()
+					delete(games, gID)
+					gameLock.Unlock()
+					fmt.Printf("Cleaning up the game %s\n", gID)
+					return
+				case <-time.After(checkSeconds * time.Second):
+
+					heartbeatDelay := checkSeconds * 2 * time.Second
+					heartbeatCutOff := time.Now().Add(heartbeatDelay * -1)
+					for _, p := range g.players {
+						if p.lastSeen.After(heartbeatCutOff) {
+							continue
+						}
+
+						fmt.Printf("Asking if %s is still there in %s :( \n", p.name, gID)
+						ayste := Event{Name: "HeartbeatCheck", Payload: AreYouStillThereEvent{ConnectionParameters{"THE SERVER"}}}
+						notAPassiveAgressiveHeartBeat, _ := json.Marshal(ayste)
+						select {
+						case g.listening[p.name] <- notAPassiveAgressiveHeartBeat:
+						case <-time.After(4 * time.Second):
+							fmt.Println("failed to send data to ", name)
+						}
+						if p.lastSeen.After(heartbeatCutOff.Add(heartbeatDelay * -1)) {
+							continue
+						}
+						_, err := w.Write(notAPassiveAgressiveHeartBeat)
+						if err != nil {
+							fmt.Println("failed to write data for heartbeat")
+						}
+
+						fmt.Printf("Removing player %s from game %s \n", p.name, gID)
+						gameLock.Lock()
+						delete(g.players, p.name)
+						delete(g.listening, p.name)
+						gameLock.Unlock()
+						if len(g.players) == 0 {
+							g.gameEnd <- true
+						}
+					}
+				}
+			}
+		}()
+		fmt.Fprintf(w, "Created a new game.\n")
 	}
 
 }
@@ -221,23 +285,22 @@ func gameListen(w http.ResponseWriter, req *http.Request) {
 	ch := make(chan []byte)
 	g.listening[name] = ch
 	gameLock.Unlock()
+
 	select {
 	case data := <-ch:
+		gameLock.Lock()
+		g.players[name].seen()
+		gameLock.Unlock()
 		_, err := w.Write(data)
 		if err != nil {
-			fmt.Println("failed to write data")
+			fmt.Println("failed to write data down to ", g.players[name])
 			w.WriteHeader(http.StatusInternalServerError)
 		}
-		//TODO: case for killing on shared game channel
-	case <-time.After(100 * time.Second):
-		fmt.Println("in the future we would: checking livelyhood with a heartbeat request for ", gID, name)
-		// TODO: consider setting something here to actually make this
-		w.WriteHeader(http.StatusRequestTimeout)
+	case <-time.After(checkSeconds * 4 * time.Second):
+		fmt.Printf("No data sent in the last %d seconds for %s:%s\n", 100, gID, name)
+		w.WriteHeader(http.StatusGatewayTimeout)
 	}
 
-	// This should indicate the user stopped listening.
-	// They may reconnect eventually but maybe not so we will have to make this clearer in the future.
-	// Later sweep should deal with sending to others in the game to decide if they leave or what.
 	gameLock.Lock()
 	delete(g.listening, name)
 	gameLock.Unlock()
@@ -257,10 +320,22 @@ func gameSend(w http.ResponseWriter, req *http.Request) {
 	}
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		fmt.Println("failed to read data")
+		fmt.Println("failed to read data sent from ", thisPlayer)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
+	if _, ok := games[gID].players[thisPlayer]; ok {
+		games[gID].players[thisPlayer].lastSeen = time.Now()
+	}
+
+	// temp change
+	var ev Event
+	err = json.Unmarshal(body, &ev)
+	if err == nil && ev.Name == "HeartbeatCheck" {
+		return //shortcircuit for heartybeat checks
+	}
+
 	g.history = append(g.history, historicalEvent{thisPlayer, string(body)})
 	games[gID] = g
 	for name, ch := range g.listening {
@@ -269,8 +344,8 @@ func gameSend(w http.ResponseWriter, req *http.Request) {
 		}
 		select {
 		case ch <- body:
-		case <-time.After(3 * time.Second):
-			fmt.Println("failed to send data")
+		case <-time.After(4 * time.Second):
+			fmt.Println("failed to send data to ", name)
 		}
 	}
 }
@@ -300,9 +375,8 @@ func gameDisconnect(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, "Disconnected from the game.\n")
 
 	delete(g.players, name)
+	delete(g.listening, name)
 	if len(g.players) == 0 {
-		delete(games, gID)
-		fmt.Printf("Cleaning up the game %s\n", gID)
-		fmt.Fprintf(w, "Cleaned up the game:%s!\n", gID)
+		g.gameEnd <- true
 	}
 }
