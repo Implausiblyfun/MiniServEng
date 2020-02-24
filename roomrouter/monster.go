@@ -274,6 +274,7 @@ func gameListen(w http.ResponseWriter, req *http.Request) {
 
 	// playStatus := req.URL.Query().Get("pStatus")
 
+	fmt.Printf("Listening for %s:%s\n", gID, name)
 	gameLock.Lock()
 	g, ok := games[gID]
 	if !ok {
@@ -282,8 +283,15 @@ func gameListen(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	ch := make(chan []byte)
-	g.listening[name] = ch
+	var ch chan []byte
+	if ch, ok = g.listening[name]; !ok || ch == nil {
+		fmt.Println("chanmak", gID, name)
+		ch = make(chan []byte, 20)
+		g.listening[name] = ch
+	} else {
+		fmt.Println("no chanmak", gID, name)
+	}
+
 	gameLock.Unlock()
 
 	select {
@@ -302,7 +310,7 @@ func gameListen(w http.ResponseWriter, req *http.Request) {
 	}
 
 	gameLock.Lock()
-	delete(g.listening, name)
+	// delete(g.listening, name)
 	gameLock.Unlock()
 }
 
@@ -324,7 +332,7 @@ func gameSend(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
+	fmt.Println("recieved a send from ", thisPlayer, string(body))
 	if _, ok := games[gID].players[thisPlayer]; ok {
 		games[gID].players[thisPlayer].lastSeen = time.Now()
 	}
@@ -342,6 +350,7 @@ func gameSend(w http.ResponseWriter, req *http.Request) {
 		if name == thisPlayer {
 			continue
 		}
+		fmt.Println("Sending to ", name)
 		select {
 		case ch <- body:
 		case <-time.After(4 * time.Second):
