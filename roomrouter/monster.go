@@ -285,13 +285,9 @@ func gameListen(w http.ResponseWriter, req *http.Request) {
 
 	var ch chan []byte
 	if ch, ok = g.listening[name]; !ok || ch == nil {
-		fmt.Println("chanmak", gID, name)
 		ch = make(chan []byte, 20)
 		g.listening[name] = ch
-	} else {
-		fmt.Println("no chanmak", gID, name)
 	}
-
 	gameLock.Unlock()
 
 	select {
@@ -350,7 +346,7 @@ func gameSend(w http.ResponseWriter, req *http.Request) {
 		if name == thisPlayer {
 			continue
 		}
-		fmt.Println("Sending to ", name)
+
 		select {
 		case ch <- body:
 		case <-time.After(4 * time.Second):
