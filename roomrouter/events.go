@@ -38,7 +38,8 @@ type ShuffleEvent struct {
 
 // A PlayerConnectedEvent is fired on the first connect of other players.
 type PlayerConnectedEvent struct {
-	Cp ConnectionParameters `json:"parameters"`
+	Cp       ConnectionParameters `json:"parameters"`
+	PlayerID string               `json:"player_id"`
 }
 
 // A EndTurnEvent signifies when a player has finished their turn

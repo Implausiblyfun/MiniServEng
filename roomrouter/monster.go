@@ -57,8 +57,8 @@ type historicalEvent struct {
 // Will overhaul things like playorder later.
 type player struct {
 	name      string
-	lastSeen  time.Time
 	playOrder int
+	lastSeen  time.Time
 }
 
 func (p *player) seen() {
@@ -71,6 +71,17 @@ const (
 	gameIDKey key = iota
 	pNameKey  key = iota
 )
+
+func toPlayerIdentifier(ip, name string) string {
+	return ip + "|" + name
+}
+func toPlayerName(playerID string) string {
+	pComponents := strings.Split(playerID, "|")
+	if len(pComponents) < 2 {
+		return ""
+	}
+	return strings.Join(pComponents[1:], "|")
+}
 
 func gameReqs(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +108,7 @@ func gameReqs(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(
 			context.WithValue(r.Context(), gameIDKey, gID),
-			pNameKey, ip+pName)
+			pNameKey, toPlayerIdentifier(ip, pName))
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -203,11 +214,12 @@ func gameConnect(w http.ResponseWriter, req *http.Request) {
 	if ok {
 		// connect to existing game
 		fmt.Fprintf(w, "Existing game %s connected to.\n", gID)
-		g.players[name] = &player{name, time.Now(), -1}
+		g.players[name] = &player{name, -1, time.Now()}
+
 	} else {
 		// make new game
-		g := Game{
-			players:   map[string]*player{name: &player{name, time.Now(), -1}},
+		g = Game{
+			players:   map[string]*player{name: &player{name, -1, time.Now()}},
 			listening: map[string]chan []byte{},
 			gameEnd:   make(chan bool, 2),
 		}
@@ -265,6 +277,40 @@ func gameConnect(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, "Created a new game.\n")
 	}
 
+	// make the listening chan here
+	//TODO:take out from listening?
+	var ch chan []byte
+	if ch, ok = g.listening[name]; !ok || ch == nil {
+		ch = make(chan []byte, 20)
+		g.listening[name] = ch
+	}
+
+	pce := Event{Name: "PlayerConnected", Payload: PlayerConnectedEvent{ConnectionParameters{"THE SERVER"}, toPlayerName(name)}}
+	pc, err := json.Marshal(pce)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	g.sendToParticipants(name, pc)
+
+	for otherN := range g.listening {
+		fmt.Println("Trying to send to er the person called", otherN)
+		if name == otherN {
+			continue
+		}
+		pce.Payload = PlayerConnectedEvent{ConnectionParameters{"THE SERVER"}, toPlayerName(otherN)}
+		body, err := json.Marshal(pce)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		fmt.Println("No problemos sending to for ", name, otherN)
+		select {
+		case ch <- body:
+		case <-time.After(4 * time.Second):
+			fmt.Println("failed to send data for ", otherN)
+		}
+	}
 }
 
 func gameListen(w http.ResponseWriter, req *http.Request) {
@@ -292,6 +338,7 @@ func gameListen(w http.ResponseWriter, req *http.Request) {
 
 	select {
 	case data := <-ch:
+		// fmt.Println("Got DATA for ", name, string(data))
 		gameLock.Lock()
 		g.players[name].seen()
 		gameLock.Unlock()
@@ -336,17 +383,25 @@ func gameSend(w http.ResponseWriter, req *http.Request) {
 	// temp change
 	var ev Event
 	err = json.Unmarshal(body, &ev)
-	if err == nil && ev.Name == "HeartbeatCheck" {
-		return //shortcircuit for heartybeat checks
+	if err == nil {
+		switch ev.Name {
+		case "HeartbeatCheck":
+			return //shortcircuit for heartybeat checks
+		}
+
 	}
 
 	g.history = append(g.history, historicalEvent{thisPlayer, string(body)})
 	games[gID] = g
+	g.sendToParticipants(thisPlayer, body)
+
+}
+
+func (g *Game) sendToParticipants(playerName string, body []byte) {
 	for name, ch := range g.listening {
-		if name == thisPlayer {
+		if name == playerName {
 			continue
 		}
-
 		select {
 		case ch <- body:
 		case <-time.After(4 * time.Second):
