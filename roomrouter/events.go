@@ -15,6 +15,13 @@ type DestroyEvent struct {
 	IsEnchantment bool                 `json:"is_enchantment"`
 }
 
+// A PlayOrderEvent is sent at the beginning of a game to indicate
+// who is first player
+type PlayOrderEvent struct {
+	Cp              ConnectionParameters `json:"parameters"`
+	ClientGoesFirst bool                 `json:"client_goes_first"`
+}
+
 // CardChangeEvent is when a played card has been modified
 type CardChangeEvent struct {
 	// Todo: if cards get expensive in size (they shouldn't),

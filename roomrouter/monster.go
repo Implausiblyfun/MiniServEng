@@ -298,7 +298,7 @@ func gameConnect(w http.ResponseWriter, req *http.Request) {
 		if name == otherN {
 			continue
 		}
-		pce.Payload = PlayerConnectedEvent{ConnectionParameters{"THE SERVER"}, toPlayerName(otherN)}
+		pce.Payload = PlayerConnectedEvent{ConnectionParameters{toPlayerName(otherN)}, toPlayerName(otherN)}
 		body, err := json.Marshal(pce)
 		if err != nil {
 			fmt.Println(err)
@@ -309,6 +309,28 @@ func gameConnect(w http.ResponseWriter, req *http.Request) {
 		case ch <- body:
 		case <-time.After(4 * time.Second):
 			fmt.Println("failed to send data for ", otherN)
+		}
+	}
+
+	// decide who goes first and send the appropriate info.
+	if len(g.players) == 2 {
+
+		starts := true
+		for name, ch := range g.listening {
+			poe := Event{Name: "PlayOrder", Payload: PlayOrderEvent{ConnectionParameters{"THE SERVER"}, starts}}
+
+			body, err := json.Marshal(poe)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			select {
+			case ch <- body:
+			case <-time.After(4 * time.Second):
+				fmt.Println("failed to send data for starting to  ", name)
+			}
+			starts = false
 		}
 	}
 }
