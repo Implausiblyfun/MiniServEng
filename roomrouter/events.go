@@ -73,6 +73,11 @@ type Event struct {
 	Payload interface{} `json:"payload"`
 }
 
+// BatchedEvents is a bundled set of events. Very useful for turn resolution.
+type BatchedEvents struct {
+	Events []Event `json:"events"`
+}
+
 // ConnectionParameters is the set of parameters all events should have in their payloads.
 type ConnectionParameters struct {
 	PlayerID string `json:"player_id"`

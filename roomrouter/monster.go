@@ -312,6 +312,7 @@ func gameConnect(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	fmt.Printf("Game %s now has the following players %v.\n", gID, g.players)
 	// decide who goes first and send the appropriate info.
 	if len(g.players) == 2 {
 
@@ -328,7 +329,7 @@ func gameConnect(w http.ResponseWriter, req *http.Request) {
 			select {
 			case ch <- body:
 			case <-time.After(4 * time.Second):
-				fmt.Println("failed to send data for starting to  ", name)
+				fmt.Printf("failed to send data for starting to %s.\n", name)
 			}
 			starts = false
 		}
@@ -397,12 +398,11 @@ func gameSend(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	fmt.Println("recieved a send from ", thisPlayer, string(body))
+	fmt.Printf("recieved a send from %s: %s", thisPlayer, string(body))
 	if _, ok := games[gID].players[thisPlayer]; ok {
 		games[gID].players[thisPlayer].lastSeen = time.Now()
 	}
 
-	// temp change
 	var ev Event
 	err = json.Unmarshal(body, &ev)
 	if err == nil {
@@ -427,7 +427,7 @@ func (g *Game) sendToParticipants(playerName string, body []byte) {
 		select {
 		case ch <- body:
 		case <-time.After(4 * time.Second):
-			fmt.Println("failed to send data to ", name)
+			fmt.Printf("failed to send data to %s.\n", name)
 		}
 	}
 }
