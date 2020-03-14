@@ -22,7 +22,14 @@ var (
 	games    = make(map[string]Game)
 )
 
-// SetGameRoutes on the router
+type key int
+
+const (
+	gameIDKey key = iota
+	pNameKey  key = iota
+)
+
+// SetGameRoutes onto a provided router.
 func SetGameRoutes() func(chi.Router) {
 	return func(r chi.Router) {
 		r.HandleFunc("/", gameBoilerPlate)
@@ -64,13 +71,6 @@ type player struct {
 func (p *player) seen() {
 	p.lastSeen = time.Now()
 }
-
-type key int
-
-const (
-	gameIDKey key = iota
-	pNameKey  key = iota
-)
 
 func toPlayerIdentifier(ip, name string) string {
 	return ip + "|" + name

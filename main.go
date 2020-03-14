@@ -17,7 +17,7 @@ func main() {
 	r.Use(middleware.ThrottleBacklog(10, 50, time.Second*5))
 
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Plz dont overload this.\nJust trying to make a nice little easy webbysite."))
+		w.Write([]byte("Plz dont overload this.\nJust trying to make a nice little easy webbysite!"))
 	})
 
 	r.Route("/game", roomrouter.SetGameRoutes())
