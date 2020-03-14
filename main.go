@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os/exec"
 	"time"
 
 	"github.com/go-chi/chi"
@@ -20,7 +21,12 @@ func main() {
 	})
 
 	r.Route("/game", roomrouter.SetGameRoutes())
-
+	r.HandleFunc("/ref", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Try to ref?"))
+		cmd := exec.Command("bash", "~updater.sh")
+		err := cmd.Run()
+		fmt.Fprintf(w, err.Error())
+	})
 	port := "8080"
 	fmt.Printf("Running on port %s\n", port)
 
