@@ -13,8 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/go-chi/chi"
 )
 
 var (
@@ -28,8 +26,6 @@ const (
 	gameIDKey key = iota
 	pNameKey  key = iota
 )
-
-
 
 // Game is basically a chat room functionality.
 type Game struct {
@@ -67,11 +63,6 @@ func toPlayerName(playerID string) string {
 	return strings.Join(pComponents[1:], "|")
 }
 
-
-
-
-
-
 func gameReqs(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -105,8 +96,6 @@ func gameReqs(next http.Handler) http.Handler {
 }
 
 // Begin Route creations
-
-// TODO: make json to work
 func gameHistory(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	gID := ctx.Value(gameIDKey).(string)
