@@ -63,6 +63,8 @@ func toPlayerName(playerID string) string {
 	return strings.Join(pComponents[1:], "|")
 }
 
+// require certain parameters to be found in the url so as to link tightly to a game.
+// Obviates the need for something like cookies or true context on a single long running conn.
 func gameReqs(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 

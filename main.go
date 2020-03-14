@@ -23,7 +23,7 @@ func main() {
 	r.Route("/game", roomrouter.SetGameRoutes())
 	r.HandleFunc("/ref", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Try to refresh?\n"))
-		cmd := exec.Command("/bin/sh", "./updater.sh")
+		cmd := exec.Command("/bin/sh", "updater.sh")
 		err := cmd.Run()
 		fmt.Fprintf(w, err.Error())
 	})
